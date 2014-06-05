@@ -12,7 +12,7 @@ PUPPETCONF="/etc/xpuppet.conf";
 
 if [ -f "$PUPPETCONF" ]; then . $PUPPETCONF; fi
 
-PUPPETLIB="/usr/lib/libxpuppet.so";
+PUPPETLIB="/usr/lib/libxpuppet.so.0";
 
 if [ -f "$PUPPETLIB" ]; then . $PUPPETLIB; fi
 
@@ -24,28 +24,28 @@ if [ -f "$PUPPETLIB" ]; then . $PUPPETLIB; fi
 ##########################
 
 case $1 in
-'addgroup') puppet_addgroup $2;
+'addgroup') puppet_addgroup $2; # ADD Group
 puppet_check_error $?;
 ;;
-'addnode') puppet_addnode $2 $3;
+'addnode') puppet_addnode $2 $3; # ADD Node
 puppet_check_error $?;
 ;;
-'adddir') puppet_adddir $2 $3;
+'adddir') puppet_adddir $2 $3; # ADD Directory
 puppet_check_error $?;
 ;;
-'addfile') puppet_addfile $2 $3 $4;
+'addfile') puppet_addfile $2 $3 $4; # ADD File
 puppet_check_error $?;
 ;;
-'delnode') puppet_delnode $2 $3;
+'delnode') puppet_delnode $2 $3; # DEL Node
 puppet_check_error $?;
 ;;
-'list') puppet_list $2 $3;
+'list') puppet_list $2 $3; # List Database Contents
 puppet_check_error $?;
 ;;
-'update') puppet_update $2;
+'update') puppet_update $2; # Update Puppets
 puppet_check_error $?;
 ;;
-*) puppet_usage;
+*) puppet_usage; # HELP
 ;;
 esac
 
