@@ -84,6 +84,16 @@ function puppet_check_file_name {
         fi;
 }
 
+function puppet_order_db {
+	db="$1";
+
+	echo -n "Ordering database items ... ";
+
+	cat $db | sort > ${db}.new;
+	mv ${db}.new $db;
+
+	echo "done.";
+}
 
 ##################################
 #                                #
@@ -105,6 +115,7 @@ function puppet_addgroup {
 		mkdir -p $PUPPETS/$group_name;
 		echo "$group_name" >> $GROUPDB;
 		echo "Created $PUPPETS/$group_name structure for puppet $group_name group.";
+		puppet_order_db $GROUPDB;
 		return $true;
 	else	
 		echo "Already exist $PUPPETS/$group_name structure for puppet $group_name group.";
@@ -131,6 +142,7 @@ function puppet_addnode {
 	if [[ $? -eq $true ]]; then
 		echo "$group_name $node_name" >> $NODEDB
 		echo "New puppet node $node_name added to $group_name group.";
+		puppet_order_db $NODEDB;
 		return $true;
 	else
 		echo "Node $node_name is already registered in puppet $group_name group.";
@@ -158,6 +170,7 @@ function puppet_adddir {
 		mkdir -p $PUPPETS/$group_name/$dir_name
 		echo "$group_name $dir_name" >> $DIRDB
 		echo "New puppet directory $dir_name added to $group_name group.";
+		puppet_order_db $DIRDB;
 		return $true;
         else
                 echo "Directory $dir_name is already registered in $group_name group.";
@@ -192,10 +205,11 @@ function puppet_addfile {
 		puppet_file_name=$(echo $file_name | awk -F/ '{print $NF}');
 
 		# Copiamos el fichero al destino
-		cp -fr $file_name $PUPPETS/$group_name/$dir_name/$puppet_file_name
+		cp -Lfr $file_name $PUPPETS/$group_name/$dir_name/$puppet_file_name
 		
         	echo "$group_name $dir_name $puppet_file_name" >> $FILEDB
         	echo "New puppet file $dir_name/$puppet_file_name added to $group_name group.";
+		puppet_order_db $FILEDB;
 		return $true;
 	else
                 echo "File $dir_name/$puppet_file_name is already registered in $group_name group.";
@@ -224,6 +238,7 @@ function puppet_delnode {
 		cp $TEMP/$NODEDB $NODEDB;
 		# TODO COMPROBAR QUE SE HA BORRADO
                 echo "Puppet node $node_name deleted from $group_name group.";
+		puppet_order_db $NODEDB;
                 return $true;
         else
                 echo "Node $node_name is already registered in puppet $group_name group.";
