@@ -1,0 +1,307 @@
+#!/bin/bash
+
+##########################################
+#                                        # 
+# XPuppet: Unix System Puppets           #
+#                                        # 
+# 2014 (c) @burzumishi [ Antonio Cao ]   # 
+#                                        # 
+##########################################
+
+
+##################################
+#                                #
+# Define Constantes              #
+#                                #
+##################################
+
+true=0;
+false=1;
+
+
+############################
+#                          #
+# Define funciones basicas #
+#                          #
+############################
+
+function puppet_check_error {
+	if [[ $1 -eq 1 ]]; then
+		echo "Error found!";
+		exit $false;
+	fi
+}
+
+function puppet_check_group_name {
+	group_name="$1";
+
+	# CHECK PUPPET_NAME (GROUPDB)
+	check_group_name=$(grep -w "$group_name" $GROUPDB);
+	if [ "$check_group_name" = "" ]; then
+		return $true;
+	else
+		return $false;
+	fi;
+}
+
+function puppet_check_node_name {
+	group_name="$1";
+	node_name="$2";
+
+        # CHECK NODE_NAME (NODEDB)
+        check_node_name=$(grep -w "$group_name $node_name" $NODEDB);
+        if [ "$check_node_name" = "" ]; then
+		return $true;
+        else
+		return $false;
+        fi;
+}
+
+function puppet_check_dir_name {
+	group_name="$1";
+	dir_name="$2";
+
+        # CHECK DIR (DIRDB)
+        check_dir_name=$(grep -w "$group_name $dir_name" $DIRDB);
+        if [ "$check_dir_name" = "" ]; then
+		return $true;
+	else
+		return $false;
+        fi;
+}
+
+function puppet_check_file_name {
+	group_name="$1";
+        dir_name="$2";
+	file_name="$3";
+
+        # CHECK FILE (FILEDB)
+        check_file_name=$(grep -w "$group_name $dir_name $file_name" $FILEDB);
+        if [ "$check_file_name" = "" ]; then
+		return $true;
+        else
+                return $false;
+        fi;
+}
+
+
+##################################
+#                                #
+# Define funciones de xpuppet    #
+#                                #
+##################################
+
+function puppet_addgroup {
+	group_name="$1";
+
+	if [ "$group_name" = "" ]; then
+		echo "ERROR! New puppet group name is needed!"
+		exit $false;
+	fi;
+
+	puppet_check_group_name $group_name;
+
+	if [[ $? -eq $true ]]; then
+		mkdir -p $PUPPETS/$group_name;
+		echo "$group_name" >> $GROUPDB;
+		echo "Created $PUPPETS/$group_name structure for puppet $group_name group.";
+		return $true;
+	else	
+		echo "Already exist $PUPPETS/$group_name structure for puppet $group_name group.";
+		return $false;
+	fi;
+} 
+
+function puppet_addnode {
+	group_name="$1";
+	node_name="$2";
+
+        if [ "$group_name" = "" ]; then
+                echo "ERROR! A registered puppet group name is needed!"
+                exit $false;
+        fi;
+
+        if [ "$node_name" = "" ]; then
+                echo "ERROR! New puppet node name is needed!"
+                exit $false;
+        fi;
+
+	puppet_check_node_name $group_name $node_name;
+        
+	if [[ $? -eq $true ]]; then
+		echo "$group_name $node_name" >> $NODEDB
+		echo "New puppet node $node_name added to $group_name group.";
+		return $true;
+	else
+		echo "Node $node_name is already registered in puppet $group_name group.";
+		return $false;
+	fi;
+}
+
+function puppet_adddir {
+	group_name="$1";
+	dir_name="$2";
+
+        if [ "$group_name" = "" ]; then
+                echo "ERROR! A registered puppet group name is needed!"
+                exit $false;
+        fi;
+
+        if [ "$dir_name" = "" ]; then
+                echo "ERROR! A new puppet directory name is needed!"
+                exit $false;
+        fi;
+
+	puppet_check_dir_name $group_name $dir_name;
+
+	if [[ $? -eq $true ]]; then
+		mkdir -p $PUPPETS/$group_name/$dir_name
+		echo "$group_name $dir_name" >> $DIRDB
+		echo "New puppet directory $dir_name added to $group_name group.";
+		return $true;
+        else
+                echo "Directory $dir_name is already registered in $group_name group.";
+                return $false;
+        fi;
+}
+
+function puppet_addfile {
+        group_name="$1";
+	dir_name="$2";
+        file_name="$3";
+
+        if [ "$group_name" = "" ]; then
+                echo "ERROR! A registered puppet group name is needed!"
+                exit $false;
+        fi;
+
+        if [ "$dir_name" = "" ]; then
+                echo "ERROR! A registered directory name is needed!"
+                exit $false;
+        fi;
+
+        if [ "$file_name" = "" ]; then
+                echo "ERROR! New file name is needed!"
+                exit $false;
+        fi;
+
+	puppet_check_file_name $group_name $dir_name $file_name;
+
+	if [[ $? -eq $true ]]; then
+		# Nombre de fichero sin directorios
+		puppet_file_name=$(echo $file_name | awk -F/ '{print $NF}');
+
+		# Copiamos el fichero al destino
+		cp -fr $file_name $PUPPETS/$group_name/$dir_name/$puppet_file_name
+		
+        	echo "$group_name $dir_name $puppet_file_name" >> $FILEDB
+        	echo "New puppet file $dir_name/$puppet_file_name added to $group_name group.";
+		return $true;
+	else
+                echo "File $dir_name/$puppet_file_name is already registered in $group_name group.";
+                return $false;
+        fi;
+}
+
+function puppet_delnode {
+        group_name="$1";
+        node_name="$2";
+
+        if [ "$group_name" = "" ]; then
+                echo "ERROR! A registered puppet group name is needed!"
+                exit $false;
+        fi;
+
+        if [ "$node_name" = "" ]; then
+                echo "ERROR! New puppet node name is needed!"
+                exit $false;
+        fi;
+
+        puppet_check_node_name $group_name $node_name;
+
+        if [[ $? -eq $false ]]; then
+                grep -v "$group_name $node_name" $NODEDB > $TEMP/$NODEDB;
+		cp $TEMP/$NODEDB $NODEDB;
+		# TODO COMPROBAR QUE SE HA BORRADO
+                echo "Puppet node $node_name deleted from $group_name group.";
+                return $true;
+        else
+                echo "Node $node_name is already registered in puppet $group_name group.";
+                return $false;
+        fi;
+}
+
+function puppet_list {
+	case $1 in
+	groups) echo; echo "----------------"; echo "XPuppet [$1]"; echo "----------------"; echo;
+	cat $GROUPDB | awk '{print " * "$0}';
+	;;
+	nodes) echo; echo "----------------"; echo "XPuppet [$1]"; echo "----------------"; echo;
+	cat $NODEDB | awk '{print " ** "$0}';
+	;;
+	dirs) echo; echo "----------------"; echo "XPuppet [$1]"; echo "----------------"; echo;
+	cat $DIRDB | awk '{print " *** "$0}';
+	;;
+	files) echo; echo "----------------"; echo "XPuppet [$1]"; echo "----------------"; echo;
+	cat $FILEDB | awk '{print " **** "$0}';
+	;;
+	all) echo; echo "----------------"; echo "XPuppet [groups]"; echo "----------------"; echo;
+	cat $GROUPDB | awk '{print " * "$0}';
+
+	echo; echo "----------------"; echo "XPuppet [nodes]"; echo "---------------"; echo;
+        cat $NODEDB | awk '{print " ** "$0}';
+
+	echo; echo "--------------"; echo "XPuppet [dirs]"; echo "---------------"; echo;
+        cat $DIRDB | awk '{print " *** "$0}';
+
+	echo; echo "----------------"; echo "XPuppet [files]"; echo "----------------"; echo;
+        cat $FILEDB | awk '{print " **** "$0}';
+	;;
+	*) echo "Error! Choose one of these: groups, nodes, dirs, files or all.";
+	return $false;
+	;;
+	esac
+
+        return $true;
+}
+
+function puppet_update {
+	echo "ALPHA!! Nothing to do! :P";
+	return $true;
+}
+
+
+##############################
+#                            #
+# Funcion: usage             #
+# Descripcion: Mostrar ayuda #
+#                            #
+##############################
+
+function puppet_usage {
+echo '
+Usage XPuppet:
+
+[+++] Admin [add] commands:
+
+xpuppet addgroup [group_name]
+xpuppet addnode [group_name] [node_name]
+xpuppet adddir [group_name] [dir_name]
+xpuppet addfile [group_name] [to_dir_name] [from_file_name]
+
+[---] Admin [del] commands:
+
+xpuppet delgroup [group_name]
+xpuppet delnode [group_name] [node_name]
+xpuppet deldir [group_name] [dir_name]
+xpuppet delfile [group_name] [to_dir_name] [from_file_name]
+
+[***] Manage commands:
+
+xpuppet list [groups] | [nodes] | [dirs] | [files] | [all]
+xpuppet update [node_name] | [all]
+
+';
+exit $true;
+}
+
