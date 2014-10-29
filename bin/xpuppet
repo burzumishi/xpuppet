@@ -1,5 +1,6 @@
 #!/bin/bash
 
+
 ##########################################
 #                                        # 
 # XPuppet: Unix System Puppets           #
@@ -15,6 +16,17 @@ if [ -f "$PUPPETCONF" ]; then . $PUPPETCONF; fi
 PUPPETLIB="/usr/lib/libxpuppet.so.0";
 
 if [ -f "$PUPPETLIB" ]; then . $PUPPETLIB; fi
+
+
+##################
+#                #
+# Runtime Checks #
+#                #
+##################
+
+puppet_check_user;
+
+puppet_check_directory_structure;
 
 
 ##########################

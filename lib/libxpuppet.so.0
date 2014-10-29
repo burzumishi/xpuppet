@@ -8,12 +8,31 @@
 #                                        # 
 ##########################################
 
+############
+#          #
+# Commands #
+#          #
+############
 
-##################################
-#                                #
-# Define Constants               #
-#                                #
-##################################
+ECHO=$(which echo);
+GREP=$(which grep);
+AWK=$(which awk);
+SORT=$(which sort);
+CAT=$(which cat);
+MV=$(which mv);
+CP=$(which cp);
+MKDIR=$(which mkdir);
+DATE=$(which date);
+
+SSH=$(which ssh);
+SCP=$(which scp);
+RSH=$(which rsh);
+
+#############
+#           #
+# Constants #
+#           #
+#############
 
 # TRUE || FALSE
 
@@ -57,27 +76,75 @@ color_bkblu='\e[44m'  # Blue
 color_bkpur='\e[45m'  # Purple
 color_bkcyn='\e[46m'  # Cyan
 color_bkwht='\e[47m'  # White
+
 color_reset='\e[0m'   # Text Reset
 
 
-############################
-#                          #
-# Define basic functions   #
-#                          #
-############################
+##################
+#                #
+# Color Messages #
+#                #
+##################
+
+if [ "$COLOR" == "yes" ]; then
+	ECHO="$ECHO -e";
+	OK="${color_bgrn}OK${color_reset}";
+	ERROR="${color_bred}ERROR${color_reset}";
+	WARNING="${color_bylw}WARNING${color_reset}";
+else
+        OK="OK";
+        ERROR="ERROR";
+        WARNING="WARNING";
+fi;
+
+#########################
+#                       #
+# Define core functions #
+#                       #
+#########################
+
+function puppet_check_user {
+	WHOAMI=$(whoami);
+
+	if [ "$WHOAMI" != "root" ]; then
+		$ECHO;
+		$ECHO "$ERROR! You must be superuser to run \"xpuppet\"!";
+		$ECHO;
+
+		exit $false;
+	fi;
+
+	return $true;
+}
 
 function puppet_check_error {
 	if [[ $1 -eq 1 ]]; then
-		echo "Error found!";
+		puppet_log "$ERROR found!";
 		exit $false;
 	fi
+
+	return $true;
+}
+
+function puppet_check_directory_structure {
+        DIRS="$PUPPETS $CACHE $TEMP $DATABASES $PUPPETLOGDIR";
+
+	for dir in $DIRS; do
+		if [ ! -d "$dir" ]; then
+			$MKDIR -p $dir;	
+        		puppet_check_error $?;
+		fi;
+	done
+
+	return $true;
 }
 
 function puppet_log {
+	LOGDATE=$($DATE +%Y/%m/%d-%H:%M:%S);
 	logmsg="$1";
 	
-	echo "$date $logmsg" >> $PUPPETLOG
-	echo "logmsg";
+	$ECHO "$LOGDATE $logmsg" >> $PUPPETLOGDIR/$PUPPETLOGFILE
+	$ECHO "$logmsg";
 
 	return $true;	
 }
@@ -86,7 +153,7 @@ function puppet_check_group_name {
 	group_name="$1";
 
 	# CHECK PUPPET_NAME (GROUPDB)
-	check_group_name=$(grep -w "$group_name" $GROUPDB);
+	check_group_name=$($GREP -w "$group_name" $GROUPDB);
 	if [ "$check_group_name" = "" ]; then
 		return $true;
 	else
@@ -99,7 +166,7 @@ function puppet_check_node_name {
 	node_name="$2";
 
         # CHECK NODE_NAME (NODEDB)
-        check_node_name=$(grep -w "$group_name $node_name" $NODEDB);
+        check_node_name=$($GREP -w "$group_name $node_name" $NODEDB);
         if [ "$check_node_name" = "" ]; then
 		return $true;
         else
@@ -112,7 +179,7 @@ function puppet_check_dir_name {
 	dir_name="$2";
 
         # CHECK DIR (DIRDB)
-        check_dir_name=$(grep -w "$group_name $dir_name" $DIRDB);
+        check_dir_name=$($GREP -w "$group_name $dir_name" $DIRDB);
         if [ "$check_dir_name" = "" ]; then
 		return $true;
 	else
@@ -126,7 +193,7 @@ function puppet_check_file_name {
 	file_name="$3";
 
         # CHECK FILE (FILEDB)
-        check_file_name=$(grep -w "$group_name $dir_name $file_name" $FILEDB);
+        check_file_name=$($GREP -w "$group_name $dir_name $file_name" $FILEDB);
         if [ "$check_file_name" = "" ]; then
 		return $true;
         else
@@ -134,11 +201,25 @@ function puppet_check_file_name {
         fi;
 }
 
+function puppet_sort_db {
+        db="$1";
+
+        $CAT $db | $SORT > ${db}.new;
+	puppet_check_error $?;
+
+        $MV ${db}.new $db;
+	puppet_check_error $?;
+}
+
 function puppet_db_save {
 	content="$1";
 	db="$2";
 	
-	echo "$content" >> $db;
+	$ECHO "$content" >> $db;
+	puppet_check_error $?;
+
+	puppet_sort_db $db;
+	
 	# TODO CHECK SAVE
 }
 
@@ -146,20 +227,15 @@ function puppet_db_remove {
         content="$1";
         db="$2";
 
-	grep -v "$content" $db > $TEMP/$db;
-	cp $TEMP/$db $db;
+	$GREP -v "$content" $db > ${db}.new;
+	puppet_check_error $?;
+
+	$CP ${db}.new $db;
+	puppet_check_error $?;
+
+	puppet_sort_db $db;
+
 	# TODO CHECK REMOVE
-}
-
-function puppet_order_db {
-	db="$1";
-
-	puppet_log -n "Ordering database items ... ";
-
-	cat $db | sort > ${db}.new;
-	mv ${db}.new $db;
-
-	puppet_log "done.";
 }
 
 #############################
@@ -172,20 +248,19 @@ function puppet_addgroup {
 	group_name="$1";
 
 	if [ "$group_name" = "" ]; then
-		puppet_log "ERROR! New puppet group name is needed!"
+		puppet_log "$ERROR! New puppet group name is needed!"
 		exit $false;
 	fi;
 
 	puppet_check_group_name $group_name;
 
 	if [[ $? -eq $true ]]; then
-		mkdir -p $PUPPETS/$group_name;
+		$MKDIR -p $PUPPETS/$group_name;
 		puppet_db_save "$group_name" $GROUPDB;
-		puppet_log "Created $PUPPETS/$group_name structure for puppet $group_name group.";
-		puppet_order_db $GROUPDB;
+		puppet_log "$OK! Created $PUPPETS/$group_name structure for puppet $group_name group.";
 		return $true;
 	else	
-		puppet_log "Already exist $PUPPETS/$group_name structure for puppet $group_name group.";
+		puppet_log "$WARNING! Already exist $PUPPETS/$group_name structure for puppet $group_name group.";
 		return $false;
 	fi;
 } 
@@ -195,12 +270,12 @@ function puppet_addnode {
 	node_name="$2";
 
         if [ "$group_name" = "" ]; then
-                puppet_log "ERROR! A registered puppet group name is needed!"
+                puppet_log "$ERROR! A registered puppet group name is needed!"
                 exit $false;
         fi;
 
         if [ "$node_name" = "" ]; then
-                puppet_log "ERROR! New puppet node name is needed!"
+                puppet_log "$ERROR! New puppet node name is needed!"
                 exit $false;
         fi;
 
@@ -208,11 +283,10 @@ function puppet_addnode {
         
 	if [[ $? -eq $true ]]; then
 		puppet_db_save "$group_name $node_name" $NODEDB;
-		puppet_log "New puppet node $node_name added to $group_name group.";
-		puppet_order_db $NODEDB;
+		puppet_log "$OK! New puppet node $node_name added to $group_name group.";
 		return $true;
 	else
-		puppet_log "Node $node_name is already registered in puppet $group_name group.";
+		puppet_log "$WARNING! Node $node_name is already registered in puppet $group_name group.";
 		return $false;
 	fi;
 }
@@ -222,25 +296,24 @@ function puppet_adddir {
 	dir_name="$2";
 
         if [ "$group_name" = "" ]; then
-                puppet_log "ERROR! A registered puppet group name is needed!"
+                puppet_log "$ERROR! A registered puppet group name is needed!"
                 exit $false;
         fi;
 
         if [ "$dir_name" = "" ]; then
-                puppet_log "ERROR! A new puppet directory name is needed!"
+                puppet_log "$ERROR! A new puppet directory name is needed!"
                 exit $false;
         fi;
 
 	puppet_check_dir_name $group_name $dir_name;
 
 	if [[ $? -eq $true ]]; then
-		mkdir -p $PUPPETS/$group_name/$dir_name
+		$MKDIR -p $PUPPETS/$group_name/$dir_name
 		puppet_db_save "$group_name $dir_name" $DIRDB;
-		puppet_log "New puppet directory $dir_name added to $group_name group.";
-		puppet_order_db $DIRDB;
+		puppet_log "$OK! New puppet directory $dir_name added to $group_name group.";
 		return $true;
         else
-                puppet_log "Directory $dir_name is already registered in $group_name group.";
+                puppet_log "$WARNING! Directory $dir_name is already registered in $group_name group.";
                 return $false;
         fi;
 }
@@ -251,17 +324,17 @@ function puppet_addfile {
         file_name="$3";
 
         if [ "$group_name" = "" ]; then
-                puppet_log "ERROR! A registered puppet group name is needed!"
+                puppet_log "$ERROR! A registered puppet group name is needed!"
                 exit $false;
         fi;
 
         if [ "$dir_name" = "" ]; then
-                puppet_log "ERROR! A registered directory name is needed!"
+                puppet_log "$ERROR! A registered directory name is needed!"
                 exit $false;
         fi;
 
         if [ "$file_name" = "" ]; then
-                puppet_log "ERROR! New file name is needed!"
+                puppet_log "$ERROR! New file name is needed!"
                 exit $false;
         fi;
 
@@ -269,17 +342,16 @@ function puppet_addfile {
 
 	if [[ $? -eq $true ]]; then
 		# File name without PATH
-		puppet_file_name=$(echo $file_name | awk -F/ '{print $NF}');
+		puppet_file_name=$($ECHO $file_name | $AWK -F/ '{print $NF}');
 
 		# Copy file 
-		cp -Lfr $file_name $PUPPETS/$group_name/$dir_name/$puppet_file_name
+		$CP -Lfr $file_name $PUPPETS/$group_name/$dir_name/$puppet_file_name
 		
         	puppet_db_save "$group_name $dir_name $puppet_file_name" $FILEDB
-        	puppet_log "New puppet file $dir_name/$puppet_file_name added to $group_name group.";
-		puppet_order_db $FILEDB;
+        	puppet_log "$OK! New puppet file $dir_name/$puppet_file_name added to $group_name group.";
 		return $true;
 	else
-                puppet_log "File $dir_name/$puppet_file_name is already registered in $group_name group.";
+                puppet_log "$WARNING! File $dir_name/$puppet_file_name is already registered in $group_name group.";
                 return $false;
         fi;
 }
@@ -289,12 +361,12 @@ function puppet_delnode {
         node_name="$2";
 
         if [ "$group_name" = "" ]; then
-                puppet_log "ERROR! A registered puppet group name is needed!"
+                puppet_log "$ERROR! A registered puppet group name is needed!"
                 exit $false;
         fi;
 
         if [ "$node_name" = "" ]; then
-                puppet_log "ERROR! New puppet node name is needed!"
+                puppet_log "$ERROR! New puppet node name is needed!"
                 exit $false;
         fi;
 
@@ -302,42 +374,41 @@ function puppet_delnode {
 
         if [[ $? -eq $false ]]; then
                 puppet_db_remove "$group_name $node_name" $NODEDB;
-                puppet_log "Puppet node $node_name deleted from $group_name group.";
-		puppet_order_db $NODEDB;
+                puppet_log "$OK! Puppet node $node_name deleted from $group_name group.";
                 return $true;
         else
-                puppet_log "Node $node_name is already registered in puppet $group_name group.";
+                puppet_log "$WARNING! Node $node_name is already registered in puppet $group_name group.";
                 return $false;
         fi;
 }
 
 function puppet_list {
 	case $1 in
-	groups) echo; echo "----------------"; echo "XPuppet [$1]"; echo "----------------"; echo;
-	cat $GROUPDB | awk '{print " * "$0}';
+	groups) $ECHO; $ECHO "----------------"; $ECHO "XPuppet [$1]"; $ECHO "----------------"; $ECHO;
+	$CAT $GROUPDB | $AWK '{print " * "$0}';
 	;;
-	nodes) echo; echo "----------------"; echo "XPuppet [$1]"; echo "----------------"; echo;
-	cat $NODEDB | awk '{print " ** "$0}';
+	nodes) $ECHO; $ECHO "----------------"; $ECHO "XPuppet [$1]"; $ECHO "----------------"; $ECHO;
+	$CAT $NODEDB | $AWK '{print " ** "$0}';
 	;;
-	dirs) echo; echo "----------------"; echo "XPuppet [$1]"; echo "----------------"; echo;
-	cat $DIRDB | awk '{print " *** "$0}';
+	dirs) $ECHO; $ECHO "----------------"; $ECHO "XPuppet [$1]"; $ECHO "----------------"; $ECHO;
+	$CAT $DIRDB | $AWK '{print " *** "$0}';
 	;;
-	files) echo; echo "----------------"; echo "XPuppet [$1]"; echo "----------------"; echo;
-	cat $FILEDB | awk '{print " **** "$0}';
+	files) $ECHO; $ECHO "----------------"; $ECHO "XPuppet [$1]"; $ECHO "----------------"; $ECHO;
+	$CAT $FILEDB | $AWK '{print " **** "$0}';
 	;;
-	all) echo; echo "----------------"; echo "XPuppet [groups]"; echo "----------------"; echo;
-	cat $GROUPDB | awk '{print " * "$0}';
+	all) $ECHO; $ECHO "----------------"; $ECHO "XPuppet [groups]"; $ECHO "----------------"; $ECHO;
+	$CAT $GROUPDB | $AWK '{print " * "$0}';
 
-	echo; echo "----------------"; echo "XPuppet [nodes]"; echo "---------------"; echo;
-        cat $NODEDB | awk '{print " ** "$0}';
+	$ECHO; $ECHO "----------------"; $ECHO "XPuppet [nodes]"; $ECHO "---------------"; $ECHO;
+        $CAT $NODEDB | $AWK '{print " ** "$0}';
 
-	echo; echo "--------------"; echo "XPuppet [dirs]"; echo "---------------"; echo;
-        cat $DIRDB | awk '{print " *** "$0}';
+	$ECHO; $ECHO "--------------"; $ECHO "XPuppet [dirs]"; $ECHO "---------------"; $ECHO;
+        $CAT $DIRDB | $AWK '{print " *** "$0}';
 
-	echo; echo "----------------"; echo "XPuppet [files]"; echo "----------------"; echo;
-        cat $FILEDB | awk '{print " **** "$0}';
+	$ECHO; $ECHO "----------------"; $ECHO "XPuppet [files]"; $ECHO "----------------"; $ECHO;
+        $CAT $FILEDB | $AWK '{print " **** "$0}';
 	;;
-	*) echo "Error! Choose one of these: groups, nodes, dirs, files or all.";
+	*) $ECHO "$ERROR! Choose one of these: groups, nodes, dirs, files or all.";
 	return $false;
 	;;
 	esac
@@ -346,7 +417,7 @@ function puppet_list {
 }
 
 function puppet_update {
-	echo "ALPHA!! Nothing to do! :P";
+	$ECHO "$WARNING! ALPHA!! Nothing to do! :P";
 	return $true;
 }
 
@@ -359,7 +430,7 @@ function puppet_update {
 ###################################
 
 function puppet_usage {
-echo '
+$ECHO '
 Usage XPuppet:
 
 [+++] Admin [add] commands:

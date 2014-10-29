@@ -1,10 +1,10 @@
 #!/bin/sh
 
-# Servidor
+# Server
 
-# Cada X tiempo busca cambios en /tmp/xpuppet | /var/lib/xpuppet para distribuir a los clientes.
+# Search for changes in /var/cache/xpuppet || /var/lib/xpuppet 
 
 
-# Cliente
+# Client
 
-# Cada X tiempo busca cambios en /tmp/xpuppet | /var/lib/xpuppet para aplicar en el cliente
+# Search for changes in /var/cache/xpuppet || /var/lib/xpuppet 
